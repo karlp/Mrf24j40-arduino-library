@@ -36,7 +36,7 @@ void interrupt_routine() {
     byte last_interrupt = mrf.read_short(MRF_INTSTAT);
     // we don't care about the rx acks, but we need them to be flushed so it can keep receiving
     if (last_interrupt & MRF_I_RXIF) {
-        mrf.write_short(MRF_RXFLUSH, 0x01);
+        mrf.rx_flush();
     }
 }
 

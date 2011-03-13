@@ -34,11 +34,10 @@ void setup() {
 
 volatile uint8_t gotrx;
 volatile uint8_t txok;
-volatile uint8_t last_interrupt;
 
 void interrupt_routine() {
     // read and clear from the radio
-    last_interrupt = mrf.read_short(MRF_INTSTAT);
+    byte last_interrupt = mrf.read_short(MRF_INTSTAT);
     if (last_interrupt & MRF_I_RXIF) {
         gotrx = 1;
     }
@@ -72,7 +71,7 @@ void loop() {
     if (gotrx) {
         gotrx = 0;
         noInterrupts();
-        mrf.write_short(MRF_BBREG1, 0x04);  // RXDECINV - disable receiver
+        mrf.rx_disable();
 
         byte frame_length = mrf.read_long(0x300);  // read start of rxfifo
         Serial.print("received a packet ");Serial.print(frame_length, DEC);Serial.println(" bytes long");
@@ -87,7 +86,7 @@ void loop() {
         Serial.print(lqi, HEX);
         Serial.println(rssi, HEX);
 
-        mrf.write_short(MRF_BBREG1, 0x00);  // RXDECINV - enable receiver
+        mrf.rx_enable();
         interrupts();
 
     }

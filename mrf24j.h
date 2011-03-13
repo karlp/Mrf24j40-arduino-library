@@ -173,6 +173,12 @@ void set_promiscuous(boolean enabled);
  */
 void set_channel(byte channel);
 
+void rx_enable(void);
+void rx_disable(void);
+
+/** If you want to throw away rx data */
+void rx_flush(void);
+
 void send16(word dest16, byte len, char * data);
 
 private:

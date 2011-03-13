@@ -175,3 +175,15 @@ void Mrf24j::set_promiscuous(boolean enabled) {
         write_short(MRF_RXMCR, 0x00);
     }
 }
+
+void Mrf24j::rx_flush(void) {
+    write_short(MRF_RXFLUSH, 0x01);
+}
+
+void Mrf24j::rx_disable(void) {
+    write_short(MRF_BBREG1, 0x04);  // RXDECINV - disable receiver
+}
+
+void Mrf24j::rx_enable(void) {
+    write_short(MRF_BBREG1, 0x00);  // RXDECINV - enable receiver
+}

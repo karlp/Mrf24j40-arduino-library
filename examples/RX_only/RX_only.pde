@@ -1,5 +1,5 @@
 /**
- * Example code for using a microchip mrf24j40 module in receive mode only
+ * Example code for using a microchip mrf24j40 module to receive only
  * packets using plain 802.15.4
  * Requirements: 3 pins for spi, 3 pins for reset, chip select and interrupt
  * notifications
@@ -21,15 +21,15 @@ void setup() {
   mrf.set_pan(0xcafe);
   // This is _our_ address
   mrf.address16_write(0x6001); 
+  mrf.set_channel(12);
 
   // uncomment if you want to receive any packet on this channel
   // mrf.set_promiscuous(true);
 
   attachInterrupt(0, interrupt_routine, CHANGE);   
-  interrupts();
 }
 
-volatile byte gotrx;
+volatile uint8_t gotrx;
 
 void interrupt_routine() {
     // read and clear from the radio
@@ -41,25 +41,31 @@ void interrupt_routine() {
 
 void loop() {
     int tmp;
+    interrupts();
     if (gotrx) {
         gotrx = 0;
         noInterrupts();
-        mrf.write_short(MRF_BBREG1, 0x04);  // RXDECINV - disable receiver
+        mrf.rx_disable();
 
-        byte frame_length = mrf.read_long(0x300);  // read start of rxfifo
-        Serial.print("received a packet ");Serial.print(frame_length, DEC);Serial.println(" bytes long");
+        // read start of rxfifo
+        byte frame_length = mrf.read_long(0x300);
+        Serial.print("received a packet ");
+        Serial.print(frame_length, DEC);
+        Serial.println(" bytes long");
+
         Serial.println("Packet data:");
         for (int i = 1; i <= frame_length; i++) {
             tmp = mrf.read_long(0x300 + i);
             Serial.print(tmp, HEX);
         }
+
         Serial.print("\r\nLQI/RSSI=");
         byte lqi = mrf.read_long(0x300 + frame_length + 1);
         byte rssi = mrf.read_long(0x300 + frame_length + 2);
         Serial.print(lqi, HEX);
         Serial.println(rssi, HEX);
 
-        mrf.write_short(MRF_BBREG1, 0x00);  // RXDECINV - enable receiver
+        mrf.rx_enable();
         interrupts();
     }
 }
