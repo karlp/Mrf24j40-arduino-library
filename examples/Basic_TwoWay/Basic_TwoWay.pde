@@ -24,6 +24,10 @@ void setup() {
   mrf.set_pan(0xcafe);
   // This is _our_ address
   mrf.address16_write(0x6001); 
+
+  // uncomment if you want to receive any packet on this channel
+  // mrf.set_promiscuous(true);
+
   attachInterrupt(0, interrupt_routine, CHANGE);   
   last_time = millis();
 }
@@ -44,7 +48,6 @@ void interrupt_routine() {
 }
 
 void loop() {
-    //mrf.set_promiscuous(true);
     int tmp;
     interrupts();
     unsigned long current_time = millis();
