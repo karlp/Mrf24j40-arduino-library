@@ -149,27 +149,31 @@ class Mrf24j
 
 public:
 Mrf24j(int pin_reset, int pin_chip_select, int pin_interrupt);
-void mrf_reset(void);
-void mrf_init(void);
+void reset(void);
+void init(void);
 
-byte mrf_read_short(byte address);
-byte mrf_read_long(word address);
+byte read_short(byte address);
+byte read_long(word address);
 
-void mrf_write_short(byte address, byte data);
-void mrf_write_long(word address, byte data);
+void write_short(byte address, byte data);
+void write_long(word address, byte data);
 
-word mrf_pan_read(void);
-void mrf_pan_write(word panid);
+word get_pan(void);
+void set_pan(word panid);
 
-void mrf_address16_write(word address16);
-word mrf_address16_read(void);
+void address16_write(word address16);
+word address16_read(void);
 
-void mrf_set_interrupts(void);
+void set_interrupts(void);
 
-// Set the channel to 12, 2.41Ghz, xbee channel 0xC
-void mrf_set_channel(void);
+void set_promiscuous(boolean enabled);
 
-void mrf_send16(word dest16, byte len, char * data);
+/**
+ * Set the channel, using 802.15.4 channel numbers (11..26)
+ */
+void set_channel(byte channel);
+
+void send16(word dest16, byte len, char * data);
 
 private:
     int _pin_reset;
