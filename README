@@ -1,0 +1,6 @@
+The microchip mrf24j40ma is an 802.15.4 module, with a SPI interface.  It's nice and cheap, and it is
+readily usable on a breadboard, unlike xbee modules.  More information here:
+http://www.microchip.com/wwwproducts/Devices.aspx?dDocName=en535967
+
+This library provides a basic interface to send and receive packets using plain 802.15.4.  beacon mode
+is not supported.
