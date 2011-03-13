@@ -132,7 +132,7 @@ void Mrf24j::set_interrupts(void) {
 /** use the 802.15.4 channel numbers..
  */
 void Mrf24j::set_channel(byte channel) {
-    write_long(MRF_RFCON0, ((channel - 11) << 4) | 0x03));
+    write_long(MRF_RFCON0, (((channel - 11) << 4) | 0x03));
 }
 
 void Mrf24j::init(void) {
