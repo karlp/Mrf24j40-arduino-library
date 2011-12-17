@@ -10,62 +10,63 @@
 #include <mrf24j.h>
 
 const int pin_reset = 6;
-const int pin_cs = 7;
-const int pin_interrupt = 5;
+const int pin_cs = 10; // default CS pin on ATmega8/168/328
+const int pin_interrupt = 2; // default interrupt pin on ATmega8/168/328
 
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
 
 void setup() {
   Serial.begin(9600);
-
+  
+  mrf.reset();
+  mrf.init();
+  
   mrf.set_pan(0xcafe);
   // This is _our_ address
   mrf.address16_write(0x6001); 
-  mrf.set_channel(12);
 
   // uncomment if you want to receive any packet on this channel
-  // mrf.set_promiscuous(true);
+  //mrf.set_promiscuous(true);
+  
+  // uncomment if you want to enable PA/LNA external control
+  //mrf.set_palna(true);
+  
+  // uncomment if you want to buffer all PHY Payload
+  //mrf.set_bufferPHY(true);
 
-  attachInterrupt(0, interrupt_routine, CHANGE);   
+  attachInterrupt(0, interrupt_routine, CHANGE); // interrupt 0 equivalent to pin 2(INT0) on ATmega8/168/328
+  interrupts();
 }
 
-volatile uint8_t gotrx;
-
 void interrupt_routine() {
-    // read and clear from the radio
-    byte last_interrupt = mrf.read_short(MRF_INTSTAT);
-    if (last_interrupt & MRF_I_RXIF) {
-        gotrx = 1;
-    }
+  mrf.interrupt_handler(); // mrf24 object interrupt routine
 }
 
 void loop() {
-    int tmp;
-    interrupts();
-    if (gotrx) {
-        gotrx = 0;
-        noInterrupts();
-        mrf.rx_disable();
+    mrf.check_flags(&handle_rx, &handle_tx);
+}
 
-        // read start of rxfifo
-        byte frame_length = mrf.read_long(0x300);
-        Serial.print("received a packet ");
-        Serial.print(frame_length, DEC);
-        Serial.println(" bytes long");
-
-        Serial.println("Packet data:");
-        for (int i = 1; i <= frame_length; i++) {
-            tmp = mrf.read_long(0x300 + i);
-            Serial.print(tmp, HEX);
-        }
-
-        Serial.print("\r\nLQI/RSSI=");
-        byte lqi = mrf.read_long(0x300 + frame_length + 1);
-        byte rssi = mrf.read_long(0x300 + frame_length + 2);
-        Serial.print(lqi, HEX);
-        Serial.println(rssi, HEX);
-
-        mrf.rx_enable();
-        interrupts();
+void handle_rx() {
+    Serial.print("received a packet ");Serial.print(mrf.get_rxinfo()->frame_length, DEC);Serial.println(" bytes long");
+    
+    if(mrf.get_bufferPHY()){
+      Serial.println("Packet data (PHY Payload):");
+      for (int i = 0; i < mrf.get_rxinfo()->frame_length; i++) {
+          Serial.print(mrf.get_rxbuf()[i]);
+      }
     }
+    
+    Serial.println("\r\nASCII data (relevant data):");
+    for (int i = 0; i < mrf.rx_datalength(); i++) {
+        Serial.write(mrf.get_rxinfo()->rx_data[i]);
+    }
+    
+    Serial.print("\r\nLQI/RSSI=");
+    Serial.print(mrf.get_rxinfo()->lqi, DEC);
+    Serial.print("/");
+    Serial.println(mrf.get_rxinfo()->rssi, DEC);
+}
+
+void handle_tx() {
+    // code to transmit, nothing to do
 }
