@@ -10,8 +10,8 @@
 #include <mrf24j.h>
 
 const int pin_reset = 6;
-const int pin_cs = 7;
-const int pin_interrupt = 5;
+const int pin_cs = 10; // default CS pin on ATMEGA8
+const int pin_interrupt = 2; // default interrupt pin on ATMEGA8
 
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
 
@@ -20,75 +20,54 @@ long tx_interval = 1000;
 
 void setup() {
   Serial.begin(9600);
-
+  
+  mrf.reset();
+  mrf.init();
+  
   mrf.set_pan(0xcafe);
   // This is _our_ address
   mrf.address16_write(0x6001); 
-
+  
   // uncomment if you want to receive any packet on this channel
-  // mrf.set_promiscuous(true);
-
-  attachInterrupt(0, interrupt_routine, CHANGE);   
+  //mrf.set_promiscuous(true);
+  
+  attachInterrupt(0, interrupt_routine, CHANGE); // interrupt 0 equivalent to pin 2 on ATMEGA8
   last_time = millis();
+  interrupts();
 }
 
-volatile uint8_t gotrx;
-volatile uint8_t txok;
-
 void interrupt_routine() {
-    // read and clear from the radio
-    byte last_interrupt = mrf.read_short(MRF_INTSTAT);
-    if (last_interrupt & MRF_I_RXIF) {
-        gotrx = 1;
-    }
-    if (last_interrupt & MRF_I_TXNIF) {
-        txok = 1;
-    }
+    mrf.interrupt_handler(); // mrf24 object interrupt routine
 }
 
 void loop() {
-    int tmp;
-    interrupts();
+    mrf.check_flags(&handle_rx, &handle_tx);
     unsigned long current_time = millis();
     if (current_time - last_time > tx_interval) {
         last_time = current_time;
         Serial.println("txxxing...");
-        mrf.send16(0x4202, 4, "abcd");
+        mrf.send16(0x4202, "abcd");
     }
-    if (txok) {
-        txok = 0;
-        Serial.print("tx went ok:");
-        tmp = mrf.read_short(MRF_TXSTAT);
-        Serial.print(tmp);
-        if (!(tmp & ~(1<<TXNSTAT))) {  // 1 = failed
-            Serial.print("...And we got an ACK");
-        } else {
-            Serial.print("retried ");
-            Serial.print(tmp >> 6, HEX);
-        }
-        Serial.println();
+}
+
+void handle_rx() {
+    Serial.print("received a packet ");Serial.print(mrf.get_rxinfo()->frame_length, DEC);Serial.println(" bytes long");
+    
+    Serial.println("Packet data:");
+    for (int i = 0; i < mrf.rx_datalength(); i++) {
+        Serial.write(mrf.get_rxinfo()->rx_data[i]);
     }
-    if (gotrx) {
-        gotrx = 0;
-        noInterrupts();
-        mrf.rx_disable();
+    
+    Serial.print("\r\nLQI/RSSI=");
+    Serial.print(mrf.get_rxinfo()->lqi, DEC);
+    Serial.print("/");
+    Serial.println(mrf.get_rxinfo()->rssi, DEC);
+}
 
-        byte frame_length = mrf.read_long(0x300);  // read start of rxfifo
-        Serial.print("received a packet ");Serial.print(frame_length, DEC);Serial.println(" bytes long");
-        Serial.println("Packet data:");
-        for (int i = 1; i <= frame_length; i++) {
-            tmp = mrf.read_long(0x300 + i);
-            Serial.print(tmp, HEX);
-        }
-        Serial.print("\r\nLQI/RSSI=");
-        byte lqi = mrf.read_long(0x300 + frame_length + 1);
-        byte rssi = mrf.read_long(0x300 + frame_length + 2);
-        Serial.print(lqi, HEX);
-        Serial.println(rssi, HEX);
-
-        mrf.rx_enable();
-        interrupts();
-
+void handle_tx() {
+    if (mrf.get_txinfo()->tx_ok) {
+        Serial.println("TX went ok, got ack");
+    } else {
+        Serial.print("TX failed after ");Serial.print(mrf.get_txinfo()->retries);Serial.println(" retries\n");
     }
-  
 }
