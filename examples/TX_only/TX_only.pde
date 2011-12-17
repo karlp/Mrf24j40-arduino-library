@@ -10,8 +10,8 @@
 #include <mrf24j.h>
 
 const int pin_reset = 6;
-const int pin_cs = 7;
-const int pin_interrupt = 5;
+const int pin_cs = 10; // default CS pin on ATMEGA8
+const int pin_interrupt = 2; // default interrupt pin on ATMEGA8
 
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
 
@@ -25,30 +25,34 @@ void setup() {
   // This is _our_ address
   mrf.address16_write(0x6001); 
 
-  attachInterrupt(0, interrupt_routine, CHANGE);   
+  attachInterrupt(0, interrupt_routine, CHANGE);   // interrupt 0 equivalent to pin 2 on ATMEGA8
 
   last_time = millis();
   interrupts();
 }
 
 void interrupt_routine() {
-    // read and clear interrupt flags from the radio
-    byte last_interrupt = mrf.read_short(MRF_INTSTAT);
-    // we don't care about the rx acks, but we need them to be flushed so it can keep receiving
-    if (last_interrupt & MRF_I_RXIF) {
-        mrf.rx_flush();
-    }
+    mrf.interrupt_handler(); // mrf24 object interrupt routine
 }
 
-
 void loop() {
-    int tmp;
+    mrf.check_flags(&handle_rx, &handle_tx);
     unsigned long current_time = millis();
     if (current_time - last_time > tx_interval) {
         last_time = current_time;
         Serial.println("txxxing...");
-        char * msg = "hello world";
-        mrf.send16(0x4202, strlen(msg), msg);
+        mrf.send16(0x4202, "abcd");
     }
-  
+}
+
+void handle_rx() {
+    // data to receive, nothing to do
+}
+
+void handle_tx() {
+    if (mrf.get_txinfo()->tx_ok) {
+        Serial.println("TX went ok, got ack");
+    } else {
+        Serial.print("TX failed after ");Serial.print(mrf.get_txinfo()->retries);Serial.println(" retries\n");
+    }
 }
