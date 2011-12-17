@@ -3,17 +3,20 @@
  * modified bsd license / apache license
  */
 
-//#include "WProgram.h" //already in mrf24j.h
 #include "mrf24j.h"
-
 
 // aMaxPHYPacketSize = 127, from the 802.15.4-2006 standard.
 static uint8_t rx_buf[127];
 
 // essential for obtaining the data frame only
-static int bytes_MHR = 9; // header length = 2 Frame control + 1 sequence number + 2 panid + 2 shortAddr Destination + 2 shortAddr Source
+// bytes_MHR = 2 Frame control + 1 sequence number + 2 panid + 2 shortAddr Destination + 2 shortAddr Source
+static int bytes_MHR = 9;
 static int bytes_FCS = 2; // FCS length = 2
 static int bytes_nodata = bytes_MHR + bytes_FCS; // no_data bytes in PHY payload,  header length + FCS
+
+static int ignoreBytes = 0; // bytes to ignore, some modules behaviour.
+
+static boolean bufPHY = false; // flag to buffer all bytes in PHY Payload, or not
 
 volatile uint8_t flag_got_rx;
 volatile uint8_t flag_got_tx;
@@ -113,9 +116,10 @@ word Mrf24j::address16_read(void) {
 void Mrf24j::send16(word dest16, char * data) {
     byte len = strlen(data); // get the length of the char* array
     int i = 0;
-    write_long(i++, 9); // header length
-    write_long(i++, 9+len);  // data payload length 0x001
-    //write_long(i++, 9+2+len); //+2 is because module seems to ignore 2 bytes after the header?!. becose 2 FCS bytes appended by TXMAC
+    write_long(i++, bytes_MHR); // header length
+    // +ignoreBytes is because some module seems to ignore 2 bytes after the header?!.
+    // default: ignoreBytes = 0;
+    write_long(i++, bytes_MHR+ignoreBytes+len);
 
     // 0 | pan compression | ack | no security | no data pending | data frame[3 bits]
     write_long(i++, 0b01100001); // first byte of Frame Control
@@ -134,7 +138,9 @@ void Mrf24j::send16(word dest16, char * data) {
     write_long(i++, src16 & 0xff); // src16 low
     write_long(i++, src16 >> 8); // src16 high
 
-    //i+=2;  // All testing seems to indicate that the next two bytes are ignored. again 2 bytes on FCS appended by TXMAC
+    // All testing seems to indicate that the next two bytes are ignored.
+    //2 bytes on FCS appended by TXMAC
+    i+=ignoreBytes;
     for (int q = 0; q < len; q++) {
         write_long(i++, data[q]);
     }
@@ -180,10 +186,7 @@ void Mrf24j::init(void) {
     set_interrupts();
     set_channel(12);
     // max power is by default.. just leave it...
-    //Set transmitter power - See “REGISTER 2-62: RF CONTROL 3 REGISTER (ADDRESS: 0x203)”.
-    write_long(MRF_RFCON3, 0x00); // transmitter max power
-    write_long(MRF_TESTMODE, 0x07); // Enables PA/LNA on MRF24J40MB module, otherwise, comment this line.
-
+    // Set transmitter power - See “REGISTER 2-62: RF CONTROL 3 REGISTER (ADDRESS: 0x203)”.
     write_short(MRF_RFCTL, 0x04); //  – Reset RF state machine.
     write_short(MRF_RFCTL, 0x00); // part 2
     delay(1); // delay at least 192usec
@@ -202,27 +205,29 @@ void Mrf24j::interrupt_handler(void) {
         // read out the packet data...
         noInterrupts();
         rx_disable();
-        uint8_t frame_length = read_long(0x300);  // read start of rxfifo for, has 2 bytes more added by FCS. frame_length = m + n + 2
+        // read start of rxfifo for, has 2 bytes more added by FCS. frame_length = m + n + 2
+        uint8_t frame_length = read_long(0x300);
 
-        /*
-        * Uncomment this block, if you want all PHY Payload bytes in the rx_buf buffer
-        *
         // buffer all bytes in PHY Payload
-        int rb_ptr = 0;
-        for (int i = 0; i < frame_length; i++) { // from 0x301 to (0x301 + frame_length -1)
-            rx_buf[rb_ptr++] = read_long(0x301 + i);
+        if(bufPHY){
+            int rb_ptr = 0;
+            for (int i = 0; i < frame_length; i++) { // from 0x301 to (0x301 + frame_length -1)
+                rx_buf[rb_ptr++] = read_long(0x301 + i);
+            }
         }
-        */
 
         // buffer data bytes
         int rd_ptr = 0;
-        for (int i = 0; i < rx_datalength(); i++) { // from (0x301 + bytes_MHR) to (0x301 + frame_length - bytes_nodata - 1)
+        // from (0x301 + bytes_MHR) to (0x301 + frame_length - bytes_nodata - 1)
+        for (int i = 0; i < rx_datalength(); i++) {
             rx_info.rx_data[rd_ptr++] = read_long(0x301 + bytes_MHR + i);
         }
 
         rx_info.frame_length = frame_length;
-        rx_info.lqi = read_long(0x301 + frame_length); // same as datasheet 0x301 + (m + n + 2) <-- frame_length
-        rx_info.rssi = read_long(0x301 + frame_length + 1); // same as datasheet 0x301 + (m + n + 3) <-- frame_length + 1
+        // same as datasheet 0x301 + (m + n + 2) <-- frame_length
+        rx_info.lqi = read_long(0x301 + frame_length);
+        // same as datasheet 0x301 + (m + n + 3) <-- frame_length + 1
+        rx_info.rssi = read_long(0x301 + frame_length + 1);
 
         rx_enable();
         interrupts();
@@ -278,6 +283,33 @@ uint8_t * Mrf24j::get_rxbuf(void) {
 
 int Mrf24j::rx_datalength(void) {
     return rx_info.frame_length - bytes_nodata;
+}
+
+void Mrf24j::set_ignoreBytes(int ib) {
+    // some modules behaviour
+    ignoreBytes = ib;
+}
+
+/**
+ * Set bufPHY flag to buffer all bytes in PHY Payload, or not
+ */
+void Mrf24j::set_bufferPHY(boolean bp) {
+    bufPHY = bp;
+}
+
+boolean Mrf24j::get_bufferPHY(void) {
+    return bufPHY;
+}
+
+/**
+ * Set PA/LNA external control
+ */
+void Mrf24j::set_palna(boolean enabled) {
+    if (enabled) {
+        write_long(MRF_TESTMODE, 0x07); // Enable PA/LNA on MRF24J40MB module.
+    }else{
+        write_long(MRF_TESTMODE, 0x00); // Disable PA/LNA on MRF24J40MB module.
+    }
 }
 
 void Mrf24j::rx_flush(void) {
